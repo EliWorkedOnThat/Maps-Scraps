@@ -65,8 +65,8 @@ def generate_directory():
         rprint(f"[red][ERROR]:[/red] {e}")  
  
 #Function to sample the parsed HTML 
-def sample_html(path, soup): 
-    filepath = os.path.join(path, "sample.html") 
+def sample_html(path, soup, filename="sample.html"): 
+    filepath = os.path.join(path, filename) 
     with open(filepath, "w", encoding="utf-8") as f: 
         f.write(soup.prettify()) 
     rprint(f"[green][SUCCESS]: HTML sample saved to:[/green] {os.path.abspath(filepath)}") 
@@ -87,25 +87,31 @@ def setup_selenium(URL):
  
     wait_for_page_ready(driver)
 
+    # Parse the HTML before the search happens
+    html_before = driver.page_source
+    soup_before = BeautifulSoup(html_before, "html.parser")
+
     address = get_user_address()
     if address:
         search_address(driver, address)
 
-    html = driver.page_source  
-    soup = BeautifulSoup(html , "html.parser")  
+    # Parse the HTML after the search happens
+    html_after = driver.page_source  
+    soup_after = BeautifulSoup(html_after , "html.parser")  
 
     print()  
-    print(soup.prettify())   
-    return soup, driver
+    print(soup_after.prettify())   
+    return soup_before, soup_after, driver
 
 driver = None
 try:
     URL = get_url()
     if URL:
-        soup, driver = setup_selenium(URL)
+        soup_before, soup_after, driver = setup_selenium(URL)
         path = generate_directory()
         if path:
-            sample_html(path, soup)
+            sample_html(path, soup_before, "sample_before.html")
+            sample_html(path, soup_after, "sample_after.html")
 
         rprint("[cyan]Driver is staying open. Press Ctrl+C to close it and exit.[/cyan]")
         while True:
