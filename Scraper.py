@@ -24,6 +24,12 @@ def get_url():
     except Exception as e:  
         rprint(f"[red][ERROR]:[/red] {e}")  
         return None 
+
+#Helper to wait for the page to actually finish loading instead of sleeping blindly
+def wait_for_page_ready(driver, timeout=15):
+    WebDriverWait(driver, timeout).until(
+        lambda d: d.execute_script("return document.readyState") == "complete"
+    )
  
 def search_address(driver, address): 
     # Wait for the search box to be present and interactable 
@@ -35,7 +41,7 @@ def search_address(driver, address):
     search_box.send_keys(Keys.RETURN) 
  
     # Give the results/map time to load 
-    time.sleep(3) 
+    wait_for_page_ready(driver)
  
 #Function to create directory for HTML samples 
 def generate_directory():  
@@ -79,7 +85,7 @@ def setup_selenium(URL):
     driver = webdriver.Chrome()  
     driver.get(URL)  
  
-    time.sleep(5)
+    wait_for_page_ready(driver)
 
     address = get_user_address()
     if address:
@@ -88,16 +94,27 @@ def setup_selenium(URL):
     html = driver.page_source  
     soup = BeautifulSoup(html , "html.parser")  
 
-    driver.quit()  
     print()  
     print(soup.prettify())   
-    return soup 
- 
-URL = get_url()  
-if URL: 
-    soup = setup_selenium(URL) 
-    path = generate_directory() 
-    if path: 
-        sample_html(path, soup) 
-else: 
-    rprint("[red][ERROR]:[/red] No URL provided, exiting.")
+    return soup, driver
+
+driver = None
+try:
+    URL = get_url()
+    if URL:
+        soup, driver = setup_selenium(URL)
+        path = generate_directory()
+        if path:
+            sample_html(path, soup)
+
+        rprint("[cyan]Driver is staying open. Press Ctrl+C to close it and exit.[/cyan]")
+        while True:
+            time.sleep(1)
+    else:
+        rprint("[red][ERROR]:[/red] No URL provided, exiting.")
+except KeyboardInterrupt:
+    rprint("\n[yellow]Ctrl+C detected, closing driver...[/yellow]")
+finally:
+    if driver is not None:
+        driver.quit()
+        rprint("[green][SUCCESS]: Driver closed.[/green]")
