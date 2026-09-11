@@ -245,7 +245,8 @@ def scroll_and_collect(driver, max_scrolls=30, pause=1.5):
 def setup_selenium(URL):  
     driver = webdriver.Chrome()  
     driver.get(URL)  
- 
+    driver.set_window_size(1300,1200)
+    
     wait_for_page_ready(driver)
 
     # Parse the HTML before the search happens
