@@ -25,6 +25,12 @@ def get_url():
         rprint(f"[red][ERROR]:[/red] {e}")  
         return None 
 
+#Helper to wait specifically for result cards to appear in the DOM
+def wait_for_results(driver, timeout=15):
+    WebDriverWait(driver, timeout).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, 'div[role="article"]'))
+    )
+
 #Helper to wait for the page to actually finish loading instead of sleeping blindly
 def wait_for_page_ready(driver, timeout=15):
     WebDriverWait(driver, timeout).until(
@@ -42,6 +48,7 @@ def search_address(driver, address):
  
     # Give the results/map time to load 
     wait_for_page_ready(driver)
+    wait_for_results(driver)
  
 #Function to create directory for HTML samples 
 def generate_directory():  
@@ -79,6 +86,34 @@ def get_user_address():
         return address 
     except Exception as e: 
         print(f"[red][ERROR]:[/red] {e}") 
+
+#Function to extract result card info
+def extract_business_info(card):
+    info = {}
+
+    # Name
+    link = card.select_one("a.hfpxzc")
+    info["name"] = link["aria-label"] if link and link.has_attr("aria-label") else None
+    info["url"] = link["href"] if link and link.has_attr("href") else None
+
+    # Rating
+    rating_span = card.select_one("span.MW4etd")
+    info["rating"] = rating_span.text if rating_span else None
+
+    review_span = card.select_one("span.UY7F9")
+    info["review_count"] = review_span.text.strip("()") if review_span else None
+
+    # Category + details (both live in div.W4Efsd, in order)
+    detail_blocks = card.select("div.W4Efsd > span > span")
+    info["category"] = detail_blocks[0].text if len(detail_blocks) > 0 else None
+    info["details"] = detail_blocks[1].text if len(detail_blocks) > 1 else None
+
+    return info
+
+#Function to run extraction across every card on the parsed page
+def extract_all_businesses(soup):
+    cards = soup.select('div[role="article"]')
+    return [extract_business_info(card) for card in cards]
  
 #Function to startup selenium driver  
 def setup_selenium(URL):  
@@ -112,6 +147,12 @@ try:
         if path:
             sample_html(path, soup_before, "sample_before.html")
             sample_html(path, soup_after, "sample_after.html")
+
+        # Extract business info from the after-search results
+        businesses = extract_all_businesses(soup_after)
+        rprint(f"[cyan]Found {len(businesses)} results:[/cyan]")
+        for b in businesses:
+            rprint(b)
 
         rprint("[cyan]Driver is staying open. Press Ctrl+C to close it and exit.[/cyan]")
         while True:
