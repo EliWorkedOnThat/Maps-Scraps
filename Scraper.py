@@ -10,8 +10,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC 
 from rich import print as rprint  
 import time  
+import csv
  
-directory_name = "HTML_SAMPLES"  
+directory_name = "Information_Sample"  
  
 #Welcome message  
 rprint("[cyan]Welcome to the unorthodox scraper[/cyan]")  
@@ -68,9 +69,23 @@ def generate_directory():
  
     except PermissionError:  
         rprint(f"[red][ERROR]:[/red] {PermissionError}")  
+        return None
     except Exception as e:  
         rprint(f"[red][ERROR]:[/red] {e}")  
- 
+        return None
+
+#Function to generate CSV file
+def csv_setup(filepath , fieldnames):
+    with open(filepath , mode = "w" , newline = '' , encoding='utf-8') as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+
+#Function to append a list of business dicts to the CSV
+def csv_write_rows(filepath, fieldnames, rows):
+    with open(filepath, mode="a", newline='', encoding='utf-8') as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writerows(rows)
+
 #Function to sample the parsed HTML 
 def sample_html(path, soup, filename="sample.html"): 
     filepath = os.path.join(path, filename) 
@@ -148,15 +163,23 @@ try:
             sample_html(path, soup_before, "sample_before.html")
             sample_html(path, soup_after, "sample_after.html")
 
-        # Extract business info from the after-search results
-        businesses = extract_all_businesses(soup_after)
-        rprint(f"[cyan]Found {len(businesses)} results:[/cyan]")
-        for b in businesses:
-            rprint(b)
+            # Extract business info from the after-search results
+            businesses = extract_all_businesses(soup_after)
+            rprint(f"[cyan]Found {len(businesses)} results:[/cyan]")
+            for b in businesses:
+                rprint(b)
+
+            csv_path = os.path.join(path, "businesses.csv")
+            fieldnames = ["name", "url", "rating", "review_count", "category", "details"]
+            csv_setup(csv_path, fieldnames)
+            csv_write_rows(csv_path, fieldnames, businesses)
+            rprint(f"[green][SUCCESS]: Data logged to:[/green] {os.path.abspath(csv_path)}")
+        else:
+            rprint("[red][ERROR]:[/red] Could not create directory, skipping extraction and CSV logging.")
 
         rprint("[cyan]Driver is staying open. Press Ctrl+C to close it and exit.[/cyan]")
         while True:
-            time.sleep(1)
+            time.sleep(1) 
     else:
         rprint("[red][ERROR]:[/red] No URL provided, exiting.")
 except KeyboardInterrupt:
