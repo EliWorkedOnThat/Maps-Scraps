@@ -92,7 +92,7 @@ def sample_html(path, soup, filename="sample.html"):
     with open(filepath, "w", encoding="utf-8") as f: 
         f.write(soup.prettify()) 
     rprint(f"[green][SUCCESS]: HTML sample saved to:[/green] {os.path.abspath(filepath)}") 
- 
+
 #Function to get place to search 
 def get_user_address(): 
     print("[yellow]Enter an adress to lookup:[/yellow]") 
@@ -129,6 +129,49 @@ def extract_business_info(card):
 def extract_all_businesses(soup):
     cards = soup.select('div[role="article"]')
     return [extract_business_info(card) for card in cards]
+
+#Function to scroll and collect data to bypass lazy loading
+def scroll_and_collect(driver, max_scrolls=30, pause=1.5):
+    all_businesses = {}  # keyed by url to dedupe automatically
+
+    try:
+        feed = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'div[role="feed"]'))
+        )
+    except Exception as e:
+        rprint(f"[red][ERROR]:[/red] Could not find scrollable results panel: {e}")
+        return []
+
+    last_count = 0
+    stagnant_rounds = 0
+
+    for i in range(max_scrolls):
+        # Parse whatever is currently loaded
+        html = driver.page_source
+        soup = BeautifulSoup(html, "html.parser")
+        current_batch = extract_all_businesses(soup)
+
+        for biz in current_batch:
+            if biz["url"]:
+                all_businesses[biz["url"]] = biz  # overwrite/insert by unique url
+
+        rprint(f"[cyan]Scroll {i+1}: {len(all_businesses)} unique results so far[/cyan]")
+
+        # Scroll the feed panel down by its own height
+        driver.execute_script("arguments[0].scrollTop = arguments[0].scrollTop + arguments[0].clientHeight;", feed)
+        time.sleep(pause)
+
+        # Stop early if no new results appeared after a couple tries
+        if len(all_businesses) == last_count:
+            stagnant_rounds += 1
+            if stagnant_rounds >= 3:
+                rprint("[yellow]No new results after several scrolls, stopping.[/yellow]")
+                break
+        else:
+            stagnant_rounds = 0
+        last_count = len(all_businesses)
+
+    return list(all_businesses.values())
  
 #Function to startup selenium driver  
 def setup_selenium(URL):  
@@ -141,9 +184,12 @@ def setup_selenium(URL):
     html_before = driver.page_source
     soup_before = BeautifulSoup(html_before, "html.parser")
 
+    businesses = []
     address = get_user_address()
     if address:
         search_address(driver, address)
+        # Scroll the results panel and collect every business across all scroll positions
+        businesses = scroll_and_collect(driver)
 
     # Parse the HTML after the search happens
     html_after = driver.page_source  
@@ -151,20 +197,19 @@ def setup_selenium(URL):
 
     print()  
     print(soup_after.prettify())   
-    return soup_before, soup_after, driver
+    return soup_before, soup_after, businesses, driver
 
 driver = None
 try:
     URL = get_url()
     if URL:
-        soup_before, soup_after, driver = setup_selenium(URL)
+        soup_before, soup_after, businesses, driver = setup_selenium(URL)
         path = generate_directory()
         if path:
             sample_html(path, soup_before, "sample_before.html")
             sample_html(path, soup_after, "sample_after.html")
 
-            # Extract business info from the after-search results
-            businesses = extract_all_businesses(soup_after)
+            # Report the full set of businesses collected across all scrolls
             rprint(f"[cyan]Found {len(businesses)} results:[/cyan]")
             for b in businesses:
                 rprint(b)
