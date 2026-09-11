@@ -194,7 +194,8 @@ def collect_place_details(driver, businesses, pause=2.5):
             rprint(f"[green]Got details for:[/green] {biz['name']}")
 
         except Exception as e:
-            rprint(f"[red][ERROR]:[/red] Failed to get details for {biz.get('name')}: {e}")
+            error_type = type(e).__name__
+            rprint(f"[red][ERROR]:[/red] Failed to get details for {biz.get('name')} ({error_type}), skipping.")
 
     return businesses
 
