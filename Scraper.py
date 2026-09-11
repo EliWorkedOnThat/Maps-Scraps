@@ -130,6 +130,74 @@ def extract_all_businesses(soup):
     cards = soup.select('div[role="article"]')
     return [extract_business_info(card) for card in cards]
 
+#Function to extract detailed info from a single business's page (address, phone, hours, price)
+def extract_place_details(soup):
+    details = {}
+
+    # Address
+    address_btn = soup.select_one('button[data-item-id="address"]')
+    address_text = address_btn.select_one("div.Io6YTe") if address_btn else None
+    details["address"] = address_text.text if address_text else None
+
+    # Phone (data-item-id starts with "phone:")
+    phone_btn = soup.select_one('button[data-item-id^="phone:"]')
+    phone_text = phone_btn.select_one("div.Io6YTe") if phone_btn else None
+    details["phone"] = phone_text.text if phone_text else None
+
+    # Open/closed status line
+    status_span = soup.select_one("div.o0Svhf span.ZDu9vd")
+    details["open_status"] = status_span.text if status_span else None
+
+    # Full weekly hours table
+    hours = {}
+    rows = soup.select("table.eK4R0e tr.y0skZc")
+    for row in rows:
+        day_cell = row.select_one("td.ylH6lf")
+        hours_cell = row.select_one("td.mxowUb")
+        if day_cell and hours_cell:
+            day = day_cell.text.strip()
+            hours_label = hours_cell.get("aria-label", hours_cell.text).strip()
+            hours[day] = hours_label
+    details["hours"] = hours
+
+    # Price range (raw aria-label, can be cleaned up later)
+    price_div = soup.select_one("div.MNVeJb")
+    details["price_range"] = price_div.get("aria-label").strip() if price_div and price_div.has_attr("aria-label") else None
+
+    return details
+
+#Function to click into each business card and extract detailed info
+def collect_place_details(driver, businesses, pause=2.5):
+    for biz in businesses:
+        if not biz.get("url"):
+            continue  # skip anything we couldn't get a url for
+
+        try:
+            # Re-find the card by matching its href, since old element handles may be stale
+            card_link = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, f'a.hfpxzc[href="{biz["url"]}"]'))
+            )
+            card_link.click()
+
+            # Wait for the detail panel to actually render
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'button[data-item-id="address"]'))
+            )
+            time.sleep(pause)
+
+            # Parse the detail panel and merge into this business's dict
+            html = driver.page_source
+            soup = BeautifulSoup(html, "html.parser")
+            details = extract_place_details(soup)
+            biz.update(details)
+
+            rprint(f"[green]Got details for:[/green] {biz['name']}")
+
+        except Exception as e:
+            rprint(f"[red][ERROR]:[/red] Failed to get details for {biz.get('name')}: {e}")
+
+    return businesses
+
 #Function to scroll and collect data to bypass lazy loading
 def scroll_and_collect(driver, max_scrolls=30, pause=1.5):
     all_businesses = {}  # keyed by url to dedupe automatically
@@ -190,6 +258,8 @@ def setup_selenium(URL):
         search_address(driver, address)
         # Scroll the results panel and collect every business across all scroll positions
         businesses = scroll_and_collect(driver)
+        # Click into each business to gather address, phone, hours, price
+        businesses = collect_place_details(driver, businesses)
 
     # Parse the HTML after the search happens
     html_after = driver.page_source  
@@ -215,7 +285,7 @@ try:
                 rprint(b)
 
             csv_path = os.path.join(path, "businesses.csv")
-            fieldnames = ["name", "url", "rating", "review_count", "category", "details"]
+            fieldnames = ["name", "url", "rating", "review_count", "category", "details", "address", "phone", "open_status", "hours", "price_range"]
             csv_setup(csv_path, fieldnames)
             csv_write_rows(csv_path, fieldnames, businesses)
             rprint(f"[green][SUCCESS]: Data logged to:[/green] {os.path.abspath(csv_path)}")
