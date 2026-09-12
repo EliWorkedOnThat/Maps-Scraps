@@ -1,6 +1,7 @@
 #Imports
 import tkinter as tk
 from tkinter import scrolledtext
+from tkinter import filedialog
 import threading
 import os
 import csv
@@ -44,13 +45,20 @@ def search_address(driver, address):
     wait_for_page_ready(driver)
     wait_for_results(driver)
 
-#Function to create a fresh numbered output directory
-def generate_directory(text_widget):
+#Function to open a folder picker and store the chosen path
+def choose_output_directory(output_path_var, text_widget):
+    folder = filedialog.askdirectory()
+    if folder:  # user might cancel, which returns an empty string
+        output_path_var.set(folder)
+        log(text_widget, f"Output directory set to: {folder}")
+
+#Function to create a fresh numbered output directory inside the chosen base path
+def generate_directory(text_widget, base_path):
     try:
-        path = directory_name
+        path = os.path.join(base_path, directory_name)
         counter = 1
         while os.path.exists(path):
-            path = f"{directory_name}_{counter}"
+            path = os.path.join(base_path, f"{directory_name}_{counter}")
             counter += 1
         os.mkdir(path)
         log(text_widget, f"Directory created at: {os.path.abspath(path)}")
@@ -206,7 +214,7 @@ def csv_write_rows(filepath, fieldnames, rows):
         writer.writerows(rows)
 
 #Function that runs the entire scrape end-to-end, meant to run in a background thread
-def run_scrape(url, address, text_widget, start_button):
+def run_scrape(url, address, text_widget, start_button, output_path_var):
     driver = None
     try:
         log(text_widget, "Starting Chrome...")
@@ -225,7 +233,8 @@ def run_scrape(url, address, text_widget, start_button):
         log(text_widget, "Collecting detailed info for each business...")
         businesses = collect_place_details(driver, businesses, text_widget)
 
-        path = generate_directory(text_widget)
+        base_path = output_path_var.get() or os.getcwd()  # fall back to current dir if none chosen
+        path = generate_directory(text_widget, base_path)
         if path:
             csv_path = os.path.join(path, "businesses.csv")
             fieldnames = ["name", "url", "rating", "review_count", "category",
@@ -245,7 +254,7 @@ def run_scrape(url, address, text_widget, start_button):
         start_button.after(0, lambda: start_button.config(state=tk.NORMAL))
 
 #Function to handle the Start button click
-def on_start_click(url_entry, address_entry, text_widget, start_button):
+def on_start_click(url_entry, address_entry, text_widget, start_button, output_path_var):
     url = url_entry.get().strip()
     address = address_entry.get().strip()
 
@@ -258,7 +267,7 @@ def on_start_click(url_entry, address_entry, text_widget, start_button):
 
     thread = threading.Thread(
         target=run_scrape,
-        args=(url, address, text_widget, start_button),
+        args=(url, address, text_widget, start_button, output_path_var),
         daemon=True
     )
     thread.start()
@@ -267,7 +276,9 @@ def on_start_click(url_entry, address_entry, text_widget, start_button):
 def build_gui():
     root = tk.Tk()
     root.title("Unorthodox Scraper")
-    root.geometry("600x500")
+    root.geometry("600x550")
+
+    output_path_var = tk.StringVar(value="")  # holds the chosen output folder, empty = not chosen yet
 
     tk.Label(root, text="Maps URL:").pack(anchor="w", padx=10, pady=(10, 0))
     url_entry = tk.Entry(root, width=80)
@@ -280,9 +291,18 @@ def build_gui():
     text_widget = scrolledtext.ScrolledText(root, height=20)
     text_widget.pack(padx=10, pady=10, fill="both", expand=True)
 
+    output_button = tk.Button(
+        root, text="Choose output directory",
+        command=lambda: choose_output_directory(output_path_var, text_widget)
+    )
+    output_button.pack(pady=(0, 5))
+
+    output_label = tk.Label(root, textvariable=output_path_var, fg="gray")
+    output_label.pack(pady=(0, 10))
+
     start_button = tk.Button(
         root, text="Start Scraping",
-        command=lambda: on_start_click(url_entry, address_entry, text_widget, start_button)
+        command=lambda: on_start_click(url_entry, address_entry, text_widget, start_button, output_path_var)
     )
     start_button.pack(pady=(0, 10))
 
