@@ -52,6 +52,35 @@ def choose_output_directory(output_path_var, text_widget):
         output_path_var.set(folder)
         log(text_widget, f"Output directory set to: {folder}")
 
+#Function to read existing URL's from a CSV file and use to avoid duplicate entries
+def load_existing_urls(filepath, text_widget):
+    existing_urls = set()
+    try:
+        with open(filepath, mode="r", newline='', encoding='utf-8') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                if row.get("url"):
+                    existing_urls.add(row["url"])
+        log(text_widget, f"Loaded {len(existing_urls)} existing entries from: {filepath}")
+    except Exception as e:
+        log(text_widget, f"ERROR reading existing CSV: {type(e).__name__}: {e}")
+    return existing_urls
+
+#Function to filter out businesses whose url already exists in the target CSV
+def filter_new_businesses(businesses, existing_urls, text_widget):
+    new_businesses = [b for b in businesses if b.get("url") not in existing_urls]
+    skipped = len(businesses) - len(new_businesses)
+    if skipped > 0:
+        log(text_widget, f"Skipped {skipped} duplicate businesses already in the file.")
+    return new_businesses
+
+#Function to open a file picker for selecting an existing CSV to append to
+def choose_existing_csv(csv_path_var, text_widget):
+    filepath = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
+    if filepath:
+        csv_path_var.set(filepath)
+        log(text_widget, f"Will append to: {filepath}")
+
 #Function to create a fresh numbered output directory inside the chosen base path
 def generate_directory(text_widget, base_path):
     try:
@@ -213,8 +242,7 @@ def csv_write_rows(filepath, fieldnames, rows):
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writerows(rows)
 
-#Function that runs the entire scrape end-to-end, meant to run in a background thread
-def run_scrape(url, address, text_widget, start_button, output_path_var):
+def run_scrape(url, address, text_widget, start_button, output_path_var, save_mode_var, csv_path_var):
     driver = None
     try:
         log(text_widget, "Starting Chrome...")
@@ -233,17 +261,34 @@ def run_scrape(url, address, text_widget, start_button, output_path_var):
         log(text_widget, "Collecting detailed info for each business...")
         businesses = collect_place_details(driver, businesses, text_widget)
 
-        base_path = output_path_var.get() or os.getcwd()  # fall back to current dir if none chosen
-        path = generate_directory(text_widget, base_path)
-        if path:
-            csv_path = os.path.join(path, "businesses.csv")
-            fieldnames = ["name", "url", "rating", "review_count", "category",
-                          "details", "address", "phone", "open_status", "hours", "price_range"]
-            csv_setup(csv_path, fieldnames)
-            csv_write_rows(csv_path, fieldnames, businesses)
-            log(text_widget, f"Done! Data saved to: {os.path.abspath(csv_path)}")
-        else:
-            log(text_widget, "ERROR: Could not create output directory, results not saved.")
+        fieldnames = ["name", "url", "rating", "review_count", "category",
+                      "details", "address", "phone", "open_status", "hours", "price_range"]
+
+        if save_mode_var.get() == "append":
+            csv_path = csv_path_var.get()
+            if not csv_path:
+                log(text_widget, "ERROR: No existing CSV selected to append to.")
+                return
+
+            existing_urls = load_existing_urls(csv_path, text_widget)
+            businesses = filter_new_businesses(businesses, existing_urls, text_widget)
+
+            if businesses:
+                csv_write_rows(csv_path, fieldnames, businesses)
+                log(text_widget, f"Appended {len(businesses)} new businesses to: {csv_path}")
+            else:
+                log(text_widget, "No new businesses to add, file unchanged.")
+
+        else:  # "new" file mode, same as before
+            base_path = output_path_var.get() or os.getcwd()
+            path = generate_directory(text_widget, base_path)
+            if path:
+                csv_path = os.path.join(path, "businesses.csv")
+                csv_setup(csv_path, fieldnames)
+                csv_write_rows(csv_path, fieldnames, businesses)
+                log(text_widget, f"Done! Data saved to: {os.path.abspath(csv_path)}")
+            else:
+                log(text_widget, "ERROR: Could not create output directory, results not saved.")
 
     except Exception as e:
         log(text_widget, f"ERROR: {type(e).__name__}: {e}")
@@ -254,7 +299,7 @@ def run_scrape(url, address, text_widget, start_button, output_path_var):
         start_button.after(0, lambda: start_button.config(state=tk.NORMAL))
 
 #Function to handle the Start button click
-def on_start_click(url_entry, address_entry, text_widget, start_button, output_path_var):
+def on_start_click(url_entry, address_entry, text_widget, start_button, output_path_var, save_mode_var, csv_path_var):
     url = url_entry.get().strip()
     address = address_entry.get().strip()
 
@@ -267,7 +312,7 @@ def on_start_click(url_entry, address_entry, text_widget, start_button, output_p
 
     thread = threading.Thread(
         target=run_scrape,
-        args=(url, address, text_widget, start_button, output_path_var),
+        args=(url, address, text_widget, start_button, output_path_var, save_mode_var, csv_path_var),
         daemon=True
     )
     thread.start()
@@ -276,9 +321,11 @@ def on_start_click(url_entry, address_entry, text_widget, start_button, output_p
 def build_gui():
     root = tk.Tk()
     root.title("Unorthodox Scraper")
-    root.geometry("600x550")
+    root.geometry("600x600")
 
-    output_path_var = tk.StringVar(value="")  # holds the chosen output folder, empty = not chosen yet
+    output_path_var = tk.StringVar(value="")
+    csv_path_var = tk.StringVar(value="")
+    save_mode_var = tk.StringVar(value="new")  # "new" or "append"
 
     tk.Label(root, text="Maps URL:").pack(anchor="w", padx=10, pady=(10, 0))
     url_entry = tk.Entry(root, width=80)
@@ -288,21 +335,32 @@ def build_gui():
     address_entry = tk.Entry(root, width=80)
     address_entry.pack(padx=10, fill="x")
 
-    text_widget = scrolledtext.ScrolledText(root, height=20)
+    text_widget = scrolledtext.ScrolledText(root, height=18)
     text_widget.pack(padx=10, pady=10, fill="both", expand=True)
 
+    # Save mode selector
+    mode_frame = tk.Frame(root)
+    mode_frame.pack(pady=(0, 5))
+    tk.Radiobutton(mode_frame, text="New file", variable=save_mode_var, value="new").pack(side="left", padx=5)
+    tk.Radiobutton(mode_frame, text="Append to existing", variable=save_mode_var, value="append").pack(side="left", padx=5)
+
     output_button = tk.Button(
-        root, text="Choose output directory",
+        root, text="Choose output directory (new file mode)",
         command=lambda: choose_output_directory(output_path_var, text_widget)
     )
-    output_button.pack(pady=(0, 5))
+    output_button.pack(pady=(0, 2))
+    tk.Label(root, textvariable=output_path_var, fg="gray").pack()
 
-    output_label = tk.Label(root, textvariable=output_path_var, fg="gray")
-    output_label.pack(pady=(0, 10))
+    csv_button = tk.Button(
+        root, text="Choose existing CSV (append mode)",
+        command=lambda: choose_existing_csv(csv_path_var, text_widget)
+    )
+    csv_button.pack(pady=(5, 2))
+    tk.Label(root, textvariable=csv_path_var, fg="gray").pack(pady=(0, 10))
 
     start_button = tk.Button(
         root, text="Start Scraping",
-        command=lambda: on_start_click(url_entry, address_entry, text_widget, start_button, output_path_var)
+        command=lambda: on_start_click(url_entry, address_entry, text_widget, start_button, output_path_var, save_mode_var, csv_path_var)
     )
     start_button.pack(pady=(0, 10))
 
