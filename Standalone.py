@@ -320,7 +320,7 @@ def on_start_click(url_entry, address_entry, text_widget, start_button, output_p
 #Function to build and launch the GUI
 def build_gui():
     root = tk.Tk()
-    root.title("Unorthodox Scraper")
+    root.title("Maps Scraps")
     root.geometry("600x600")
 
     output_path_var = tk.StringVar(value="")
