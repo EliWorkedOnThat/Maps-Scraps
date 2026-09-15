@@ -242,7 +242,36 @@ def csv_write_rows(filepath, fieldnames, rows):
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writerows(rows)
 
-def run_scrape(url, address, text_widget, start_button, output_path_var, save_mode_var, csv_path_var):
+#Function to add a typed query into the queries listbox, then close the popup
+def add_query(query_text, queries_listbox, popup , entry):
+    query_text = query_text.strip()
+    if query_text:
+        queries_listbox.insert(tk.END, query_text)
+        entry.delete(0, tk.END)
+
+#Function to open the small "add query" popup window next to the address field
+def open_add_query_popup(root, queries_listbox):
+    popup = tk.Toplevel(root)
+    popup.title("Add Query")
+    popup.geometry("360x110")
+    popup.transient(root)
+    popup.grab_set()  # keep focus on popup until it's closed
+
+    tk.Label(popup, text="Enter another address/query:").pack(anchor="w", padx=10, pady=(10, 0))
+    entry = tk.Entry(popup, width=50)
+    entry.pack(padx=10, pady=5, fill="x")
+    entry.focus_set()
+
+    entry.bind("<Return>", lambda event: add_query(entry.get(), queries_listbox, popup , entry ))
+    popup.bind("<Escape>", lambda event: popup.destroy())
+
+#Function to remove whichever queries are currently selected in the listbox
+def remove_selected_queries(queries_listbox):
+    selection = queries_listbox.curselection()
+    for index in reversed(selection):
+        queries_listbox.delete(index)
+
+def run_scrape(url, addresses, text_widget, start_button, output_path_var, save_mode_var, csv_path_var):
     driver = None
     try:
         log(text_widget, "Starting Chrome...")
@@ -251,15 +280,36 @@ def run_scrape(url, address, text_widget, start_button, output_path_var, save_mo
         driver.set_window_size(1300, 1200)
         wait_for_page_ready(driver)
 
-        log(text_widget, f"Searching: {address}")
-        search_address(driver, address)
+        all_businesses = {}
 
-        log(text_widget, "Scrolling and collecting results...")
-        businesses = scroll_and_collect(driver, text_widget)
-        log(text_widget, f"Found {len(businesses)} unique businesses.")
+        for i, address in enumerate(addresses, start=1):
+            # Reset back to the base Maps page before every query after the first,
+            # so leftover panel state from the previous search doesn't interfere.
+            if i > 1:
+                driver.get(url)
+                wait_for_page_ready(driver)
 
-        log(text_widget, "Collecting detailed info for each business...")
-        businesses = collect_place_details(driver, businesses, text_widget)
+            log(text_widget, f"[{i}/{len(addresses)}] Searching: {address}")
+            try:
+                search_address(driver, address)
+            except Exception as e:
+                log(text_widget, f"ERROR: Could not search '{address}' ({type(e).__name__}), skipping this query.")
+                continue
+
+            log(text_widget, "Scrolling and collecting results...")
+            businesses = scroll_and_collect(driver, text_widget)
+            log(text_widget, f"Found {len(businesses)} unique businesses for this query.")
+
+            log(text_widget, "Collecting detailed info for each business...")
+            businesses = collect_place_details(driver, businesses, text_widget)
+
+            for biz in businesses:
+                if biz.get("url"):
+                    all_businesses[biz["url"]] = biz
+
+            log(text_widget, f"Running total: {len(all_businesses)} unique businesses across all queries so far.")
+
+        businesses = list(all_businesses.values())
 
         fieldnames = ["name", "url", "rating", "review_count", "category",
                       "details", "address", "phone", "open_status", "hours", "price_range"]
@@ -279,7 +329,7 @@ def run_scrape(url, address, text_widget, start_button, output_path_var, save_mo
             else:
                 log(text_widget, "No new businesses to add, file unchanged.")
 
-        else:  # "new" file mode, same as before
+        else:  # "new" file mode
             base_path = output_path_var.get() or os.getcwd()
             path = generate_directory(text_widget, base_path)
             if path:
@@ -299,12 +349,16 @@ def run_scrape(url, address, text_widget, start_button, output_path_var, save_mo
         start_button.after(0, lambda: start_button.config(state=tk.NORMAL))
 
 #Function to handle the Start button click
-def on_start_click(url_entry, address_entry, text_widget, start_button, output_path_var, save_mode_var, csv_path_var):
+def on_start_click(url_entry, address_entry, queries_listbox, text_widget, start_button, output_path_var, save_mode_var, csv_path_var):
     url = url_entry.get().strip()
-    address = address_entry.get().strip()
+    primary_address = address_entry.get().strip()
+    queued_addresses = [q.strip() for q in queries_listbox.get(0, tk.END)]
 
-    if not url or not address:
-        log(text_widget, "Please enter both a URL and an address.")
+    addresses = ([primary_address] if primary_address else []) + queued_addresses
+    addresses = [a for a in addresses if a]  # drop any blanks
+
+    if not url or not addresses:
+        log(text_widget, "Please enter a URL and at least one address/query.")
         return
 
     start_button.config(state=tk.DISABLED)
@@ -312,7 +366,7 @@ def on_start_click(url_entry, address_entry, text_widget, start_button, output_p
 
     thread = threading.Thread(
         target=run_scrape,
-        args=(url, address, text_widget, start_button, output_path_var, save_mode_var, csv_path_var),
+        args=(url, addresses, text_widget, start_button, output_path_var, save_mode_var, csv_path_var),
         daemon=True
     )
     thread.start()
@@ -321,7 +375,7 @@ def on_start_click(url_entry, address_entry, text_widget, start_button, output_p
 def build_gui():
     root = tk.Tk()
     root.title("Maps Scraps")
-    root.geometry("600x600")
+    root.geometry("600x650")
 
     output_path_var = tk.StringVar(value="")
     csv_path_var = tk.StringVar(value="")
@@ -332,10 +386,27 @@ def build_gui():
     url_entry.pack(padx=10, fill="x")
 
     tk.Label(root, text="Address to search:").pack(anchor="w", padx=10, pady=(10, 0))
-    address_entry = tk.Entry(root, width=80)
-    address_entry.pack(padx=10, fill="x")
+    address_frame = tk.Frame(root)
+    address_frame.pack(padx=10, fill="x")
+    address_entry = tk.Entry(address_frame, width=70)
+    address_entry.pack(side="left", fill="x", expand=True)
+    add_query_button = tk.Button(
+        address_frame, text="+", width=3,
+        command=lambda: open_add_query_popup(root, queries_listbox)
+    )
+    add_query_button.pack(side="left", padx=(5, 0))
 
-    text_widget = scrolledtext.ScrolledText(root, height=18)
+    tk.Label(root, text="Queued queries (select + press Delete to remove):").pack(anchor="w", padx=10, pady=(10, 0))
+    queries_frame = tk.Frame(root)
+    queries_frame.pack(padx=10, fill="x")
+    queries_listbox = tk.Listbox(queries_frame, height=4, selectmode=tk.EXTENDED)
+    queries_listbox.pack(side="left", fill="both", expand=True)
+    queries_scrollbar = tk.Scrollbar(queries_frame, orient="vertical", command=queries_listbox.yview)
+    queries_scrollbar.pack(side="right", fill="y")
+    queries_listbox.config(yscrollcommand=queries_scrollbar.set)
+    queries_listbox.bind("<Delete>", lambda event: remove_selected_queries(queries_listbox))
+
+    text_widget = scrolledtext.ScrolledText(root, height=15)
     text_widget.pack(padx=10, pady=10, fill="both", expand=True)
 
     # Save mode selector
@@ -360,7 +431,7 @@ def build_gui():
 
     start_button = tk.Button(
         root, text="Start Scraping",
-        command=lambda: on_start_click(url_entry, address_entry, text_widget, start_button, output_path_var, save_mode_var, csv_path_var)
+        command=lambda: on_start_click(url_entry, address_entry, queries_listbox, text_widget, start_button, output_path_var, save_mode_var, csv_path_var)
     )
     start_button.pack(pady=(0, 10))
 
