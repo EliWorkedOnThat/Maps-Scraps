@@ -1,6 +1,8 @@
+# Imports
 import os
 import psycopg2
 from dotenv import load_dotenv
+
 
 load_dotenv()
 
@@ -22,10 +24,12 @@ def connect_to_db():
             port=DB_PORT
         )
 
+        print("[SUCCESS] Connected to PostgreSQL.")
         return connection
 
     except Exception as e:
-        print(f"[ERROR]: {e}")
+        print(f"[ERROR] Could not connect to database: {e}")
+        return None
 
 
 # Function to create the table if it doesn't exist
@@ -45,5 +49,17 @@ def setup_table(connection):
         connection.commit()
         cur.close()
 
+        print("[SUCCESS] Database table is ready.")
+
     except Exception as e:
-        print(f"[ERROR]: {e}")
+        print(f"[ERROR] Could not set up table: {e}")
+
+
+# Connect to database
+connection = connect_to_db()
+
+# Set up database
+if connection:
+    setup_table(connection)
+    connection.close()
+    print("[SUCCESS] Database connection closed.")
