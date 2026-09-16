@@ -58,7 +58,7 @@ def choice():
             root.destroy()  
             print("[INFO] Continuing with CSV output.")  
 
-            from Standalone import build_gui  
+            from Engine import build_gui  
             build_gui()  
 
             #Your scraper can continue here  
@@ -112,7 +112,7 @@ port_entry
 
         root.destroy()
 
-        from Standalone import build_gui  
+        from Engine import build_gui  
         build_gui()  
 
     except psycopg2.Error as error:  
