@@ -76,13 +76,13 @@ def choice():
 
 #Function to get users info from window
 def pull_user_info(
+root,
 host_entry,
 username_entry,
 password_entry,
 database_entry,
 port_entry
 ):
-
 
     host = host_entry.get()  
     username = username_entry.get()  
@@ -109,6 +109,8 @@ port_entry
             "Success",  
             "Successfully connected to the database!"  
         )  
+
+        root.destroy()
 
         from Standalone import build_gui  
         build_gui()  
@@ -181,6 +183,7 @@ def setup_window_db():
         root,  
         text="Link Database",  
         command=lambda: pull_user_info(  
+            root,
             host_entry,  
             username_entry,  
             password_entry,  
