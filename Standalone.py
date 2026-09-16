@@ -12,6 +12,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from Setup_DB import choice
 
 directory_name = "Information_Sample"
 
@@ -438,4 +439,4 @@ def build_gui():
     root.mainloop()
 
 if __name__ == "__main__":
-    build_gui()
+    choice()
