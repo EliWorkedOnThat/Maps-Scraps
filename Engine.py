@@ -5,7 +5,9 @@ from tkinter import filedialog
 import threading
 import os
 import csv
+import json
 import time
+import psycopg2
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -231,6 +233,70 @@ def collect_place_details(driver, businesses, text_widget, pause=2.5):
 
     return businesses
 
+#Function to append data to Postgresql
+def apppend_to_db(db_config, rows, text_widget):
+    try:
+        conn = psycopg2.connect(**db_config)
+        cur = conn.cursor()
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS coldcalls (
+                id            SERIAL PRIMARY KEY,
+                name          TEXT,
+                url           TEXT UNIQUE,
+                rating        NUMERIC(3,1),
+                review_count  TEXT,
+                category      TEXT,
+                address       TEXT,
+                phone         TEXT
+            )
+        """)
+        conn.commit()
+
+    except Exception as e:
+        log(text_widget, f"ERROR setting up database: {type(e).__name__}: {e}")
+        return
+
+    inserted = 0
+    skipped = 0
+
+    for biz in rows:
+        try:
+            # Ratings sometimes come through with a comma decimal (e.g. "4,5")
+            raw_rating = biz.get("rating")
+            rating = float(raw_rating.replace(",", ".")) if raw_rating else None
+
+            # Review counts sometimes have thousands separators (e.g. "1,234")
+            raw_review_count = biz.get("review_count")
+            review_count = int(raw_review_count.replace(",", "")) if raw_review_count else None
+
+            cur.execute("""
+                INSERT INTO coldcalls (name, url, rating, review_count, category, address, phone)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (url) DO NOTHING
+            """, (
+                biz.get("name"),
+                biz.get("url"),
+                rating,
+                review_count,
+                biz.get("category"),
+                biz.get("address"),
+                biz.get("phone"),
+            ))
+            conn.commit()
+            inserted += 1
+
+        except Exception as e:
+            conn.rollback()
+            log(text_widget, f"ERROR inserting {biz.get('name')} ({type(e).__name__}: {e}), skipping.")
+            skipped += 1
+            continue
+
+    cur.close()
+    conn.close()
+
+    log(text_widget, f"Database insert complete: {inserted} attempted, {skipped} skipped.")
+
 #Function to write the header row to a fresh CSV file
 def csv_setup(filepath, fieldnames):
     with open(filepath, mode="w", newline='', encoding='utf-8-sig') as file:
@@ -272,7 +338,7 @@ def remove_selected_queries(queries_listbox):
     for index in reversed(selection):
         queries_listbox.delete(index)
 
-def run_scrape(url, addresses, text_widget, start_button, output_path_var, save_mode_var, csv_path_var):
+def run_scrape(url, addresses, text_widget, start_button, output_path_var, save_mode_var, csv_path_var, db_config=None):
     driver = None
     try:
         log(text_widget, "Starting Chrome...")
@@ -315,7 +381,14 @@ def run_scrape(url, addresses, text_widget, start_button, output_path_var, save_
         fieldnames = ["name", "url", "rating", "review_count", "category",
                       "details", "address", "phone", "open_status", "hours", "price_range"]
 
-        if save_mode_var.get() == "append":
+        if save_mode_var.get() == "postgresql":
+            if not db_config:
+                log(text_widget, "ERROR: No database connection info available.")
+                return
+
+            apppend_to_db(db_config, businesses, text_widget)
+
+        elif save_mode_var.get() == "append":
             csv_path = csv_path_var.get()
             if not csv_path:
                 log(text_widget, "ERROR: No existing CSV selected to append to.")
@@ -350,7 +423,7 @@ def run_scrape(url, addresses, text_widget, start_button, output_path_var, save_
         start_button.after(0, lambda: start_button.config(state=tk.NORMAL))
 
 #Function to handle the Start button click
-def on_start_click(url_entry, address_entry, queries_listbox, text_widget, start_button, output_path_var, save_mode_var, csv_path_var):
+def on_start_click(url_entry, address_entry, queries_listbox, text_widget, start_button, output_path_var, save_mode_var, csv_path_var, db_config=None):
     url = url_entry.get().strip()
     primary_address = address_entry.get().strip()
     queued_addresses = [q.strip() for q in queries_listbox.get(0, tk.END)]
@@ -367,20 +440,20 @@ def on_start_click(url_entry, address_entry, queries_listbox, text_widget, start
 
     thread = threading.Thread(
         target=run_scrape,
-        args=(url, addresses, text_widget, start_button, output_path_var, save_mode_var, csv_path_var),
+        args=(url, addresses, text_widget, start_button, output_path_var, save_mode_var, csv_path_var, db_config),
         daemon=True
     )
     thread.start()
 
 #Function to build and launch the GUI
-def build_gui():
+def build_gui(db_config=None):
     root = tk.Tk()
     root.title("Maps Scraps")
     root.geometry("600x650")
 
     output_path_var = tk.StringVar(value="")
     csv_path_var = tk.StringVar(value="")
-    save_mode_var = tk.StringVar(value="new")  # "new" or "append"
+    save_mode_var = tk.StringVar(value="postgresql" if db_config else "new")  # "new", "append", or "postgresql"
 
     tk.Label(root, text="Maps URL:").pack(anchor="w", padx=10, pady=(10, 0))
     url_entry = tk.Entry(root, width=80)
@@ -413,8 +486,10 @@ def build_gui():
     # Save mode selector
     mode_frame = tk.Frame(root)
     mode_frame.pack(pady=(0, 5))
-    tk.Radiobutton(mode_frame, text="New file", variable=save_mode_var, value="new").pack(side="left", padx=5)
-    tk.Radiobutton(mode_frame, text="Append to existing", variable=save_mode_var, value="append").pack(side="left", padx=5)
+    new_radio = tk.Radiobutton(mode_frame, text="New file", variable=save_mode_var, value="new")
+    new_radio.pack(side="left", padx=5)
+    append_radio = tk.Radiobutton(mode_frame, text="Append to existing", variable=save_mode_var, value="append")
+    append_radio.pack(side="left", padx=5)
 
     output_button = tk.Button(
         root, text="Choose output directory (new file mode)",
@@ -430,9 +505,18 @@ def build_gui():
     csv_button.pack(pady=(5, 2))
     tk.Label(root, textvariable=csv_path_var, fg="gray").pack(pady=(0, 10))
 
+    # When we're saving straight to PostgreSQL, the CSV-related controls
+    # above don't apply, so lock them out and make that visible.
+    if db_config:
+        new_radio.config(state=tk.DISABLED)
+        append_radio.config(state=tk.DISABLED)
+        output_button.config(state=tk.DISABLED)
+        csv_button.config(state=tk.DISABLED)
+        tk.Label(root, text="Saving directly to PostgreSQL database", fg="blue").pack(pady=(0, 5))
+
     start_button = tk.Button(
         root, text="Start Scraping",
-        command=lambda: on_start_click(url_entry, address_entry, queries_listbox, text_widget, start_button, output_path_var, save_mode_var, csv_path_var)
+        command=lambda: on_start_click(url_entry, address_entry, queries_listbox, text_widget, start_button, output_path_var, save_mode_var, csv_path_var, db_config)
     )
     start_button.pack(pady=(0, 10))
 

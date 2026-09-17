@@ -84,6 +84,7 @@ database_entry,
 port_entry
 ):
 
+
     host = host_entry.get()  
     username = username_entry.get()  
     password = password_entry.get()  
@@ -112,8 +113,16 @@ port_entry
 
         root.destroy()
 
+        db_config = {
+            "host": host,
+            "user": username,
+            "password": password,
+            "dbname": database,
+            "port": port
+        }
+
         from Engine import build_gui  
-        build_gui()  
+        build_gui(db_config=db_config)  
 
     except psycopg2.Error as error:  
 
