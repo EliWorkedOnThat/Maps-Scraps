@@ -1,0 +1,147 @@
+# Scraper Setup & Usage Guide
+
+## Before You Start
+
+Before using the tool, make sure your environment variables and dependencies are configured correctly.
+
+You must also ensure that your PostgreSQL database table has already been created.
+
+### Database Table
+
+The default table used in this project is:
+
+```text
+coldcalls
+```
+
+If you decide to use a different table name, search the project files for every reference to `coldcalls` and replace it with your chosen table name.
+
+---
+
+## Running the Tool
+
+To start the scraper, run:
+
+```text
+Engine.py
+```
+
+`Engine.py` is the main entry point and will call the other scripts and functions required by the application.
+
+When the application starts, a window will appear asking you to choose how you want to save the scraper's output:
+
+* **PostgreSQL Database**
+* **CSV File**
+
+### PostgreSQL
+
+If you select **PostgreSQL**, another window will open asking for your database connection details.
+
+Enter the required information for your PostgreSQL database and connect.
+
+Once the connection is successful, the scraper window will open.
+
+### CSV
+
+If you select **CSV**, the scraper window will open immediately and you can begin using the tool.
+
+---
+
+## Using the Scraper
+
+### 1. Enter a Google Maps URL
+
+Enter the Google Maps URL you want the scraper to use.
+
+You can use:
+
+* A Google Maps URL centered around your current/home location
+* The default Google Maps URL
+* Another valid Google Maps location URL
+
+### 2. Enter a Search Query
+
+Enter the first address, place, or search query you want to search for.
+
+You can add additional queries using the **+** button.
+
+Clicking the **+** button opens another window where you can enter an additional address or place.
+
+Press **Enter** to add the query to the list.
+
+### 3. Monitor the Extraction
+
+The information box below the search controls displays information about the scraper while it is running.
+
+It can show:
+
+* Places currently being scanned
+* Data being extracted
+* Extraction progress
+* Errors encountered during scraping
+* Other relevant status information
+
+### 4. View Your Results
+
+Once the extraction is complete, the results will be saved according to the output method you selected at startup.
+
+If you selected **CSV**, the extracted data will be saved as a CSV file.
+
+If you selected **PostgreSQL**, the extracted data will be stored in the database table you configured.
+
+---
+
+## Important Selenium Note
+
+Google Maps can change its HTML structure and element identifiers over time.
+
+If Selenium is unable to locate an element, the tags or selectors used by the scraper may have changed.
+
+If this happens, inspect the current Google Maps page and update the corresponding Selenium selectors in the project to match the current version of the website.
+
+---
+
+## ⚠️ Important While the Scraper Is Running
+
+**Do NOT resize or move the application windows while the scraper is running.**
+
+The scraper relies on Selenium and browser elements/DOM detection. Moving or resizing windows during the extraction process can interfere with the automation and may cause elements to be detected incorrectly.
+
+For the most reliable results, leave the windows in their original positions and sizes until the scraper has finished.
+
+---
+
+## Demo
+
+The repository includes a demo GIF showing the scraper in operation.
+
+Use it as a quick overview of the application's workflow and expected behavior.
+
+---
+
+## Educational Purpose
+
+This project was created for **educational purposes** to explore:
+
+* Python
+* Selenium
+* Web automation
+* HTML/DOM interaction
+* Data extraction
+* PostgreSQL integration
+* CSV output
+* GUI development
+
+Please use the project responsibly and respect the terms of service, robots policies, rate limits, and applicable laws of any website or service you interact with.
+
+The project should not be abused or used to disrupt services, bypass access controls, or collect data in violation of applicable rules.
+
+---
+
+## Customization
+
+This project is intended to be extended and improved.
+
+You are welcome to modify the scraper, add additional data fields, change the output system, improve the GUI, or adapt the extraction logic to your own educational projects.
+
+If Google Maps changes its page structure, you may need to update the Selenium selectors accordingly.
