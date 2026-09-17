@@ -57,7 +57,7 @@ def choose_output_directory(output_path_var, text_widget):
 def load_existing_urls(filepath, text_widget):
     existing_urls = set()
     try:
-        with open(filepath, mode="r", newline='', encoding='utf-8') as file:
+        with open(filepath, mode="r", newline='', encoding='utf-8-sig') as file:
             reader = csv.DictReader(file)
             for row in reader:
                 if row.get("url"):
@@ -233,7 +233,7 @@ def collect_place_details(driver, businesses, text_widget, pause=2.5):
 
 #Function to write the header row to a fresh CSV file
 def csv_setup(filepath, fieldnames):
-    with open(filepath, mode="w", newline='', encoding='utf-8') as file:
+    with open(filepath, mode="w", newline='', encoding='utf-8-sig') as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
 
