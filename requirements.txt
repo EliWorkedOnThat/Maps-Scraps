@@ -1,4 +1,6 @@
 beautifulsoup4==4.15.0
+psycopg2_binary==2.9.11
+python-dotenv==1.2.3
 Requests==2.34.2
 rich==15.0.0
 selenium==4.49.0
