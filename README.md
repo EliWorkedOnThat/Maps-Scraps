@@ -82,3 +82,6 @@ This project is intended for educational and research purposes. When using it, m
 ## Author
 
 Built by **EliWorkedOnThat** while experimenting with browser automation, web scraping, HTML parsing, and Python GUI development.
+
+
+![Project Demo](ScraperDemo.gif)
